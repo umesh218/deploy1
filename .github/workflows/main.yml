@@ -3,8 +3,8 @@ name: Deploy VM and Run Docker App
 on:
   push:
     branches:
-      - master # Trigger the workflow on pushes to the master branch
-  workflow_dispatch: # Allows manual triggering of the workflow from the GitHub UI
+      - master
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -14,48 +14,46 @@ jobs:
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
       AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-      VM_USERNAME: "azureuser" # Or your VM username
+      VM_USERNAME: "azureuser"
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Set up Terraform
-        uses: hashicorp/terraform-github-actions@v2.2.0 # Explicit Terraform Action Version
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2  # Updated to official setup action
         with:
-          terraform_command: init
-          terraform_version: ">= 1.0"
-          # Configure Azure credentials using environment variables
-          credentials: |
-            {
-              "clientId": "${{ env.AZURE_CLIENT_ID }}",
-              "clientSecret": "${{ env.AZURE_CLIENT_SECRET }}",
-              "subscriptionId": "${{ env.AZURE_SUBSCRIPTION_ID }}",
-              "tenantId": "${{ env.AZURE_TENANT_ID }}"
-            }
-        # Add retries at the job level (less ideal, but for testing)
-        #retries: 3  # Removed from step level (as it's invalid)
+          terraform_version: "1.5.7"  # Pinned to a stable version
+
+      - name: Terraform Init
+        run: terraform init
+        env:
+          ARM_CLIENT_ID: ${{ env.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ env.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ env.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ env.AZURE_TENANT_ID }}
 
       - name: Format Terraform code
         run: terraform fmt -check
 
-      - name: Plan Terraform
-        id: terraform_plan
+      - name: Terraform Plan
+        id: plan
         run: terraform plan -no-color
         continue-on-error: true
 
-      - name: Apply Terraform
-        if: steps.terraform_plan.outcome == 'success'
+      - name: Terraform Apply
+        if: steps.plan.outcome == 'success'
         run: terraform apply -auto-approve
 
-      - name: Get VM Public IP Address
+      - name: Get VM Public IP
         id: get_ip
         run: |
           VM_IP=$(terraform output -raw public_ip)
           echo "VM_IP=$VM_IP" >> $GITHUB_ENV
+          echo "IP Address: $VM_IP"
         continue-on-error: true
 
-      - name: Wait for SSH to be ready
+      - name: Wait for SSH
         if: steps.get_ip.outcome == 'success'
         uses: fjogeleit/wait-for-remote-host@v1
         with:
@@ -64,14 +62,18 @@ jobs:
           timeout: 300
 
       - name: Install Docker
-        if: steps.get_ip.outcome == 'success' && steps.wait-for-remote-host.outcome == 'success'
+        if: steps.get_ip.outcome == 'success'
         run: |
-          echo "Connecting to VM at IP: $VM_IP"
-          ssh -o StrictHostKeyChecking=no ${{ env.VM_USERNAME }}@"$VM_IP" "bash install-docker.sh"
-        continue-on-error: true
+          ssh -o StrictHostKeyChecking=no \
+            ${{ env.VM_USERNAME }}@${{ env.VM_IP }} \
+            "curl -fsSL https://get.docker.com -o get-docker.sh && sudo sh get-docker.sh"
 
       - name: Deploy App
-        if: steps.get_ip.outcome == 'success' && steps.wait-for-remote-host.outcome == 'success' && steps.install-docker.outcome == 'success'
+        if: steps.get_ip.outcome == 'success'
         run: |
-          echo "Connecting to VM at IP: $VM_IP"
-          ssh -o StrictHostKeyChecking=no ${{ env.VM_USERNAME }}@"$VM_IP" "bash deployapp.sh"
+          scp -o StrictHostKeyChecking=no \
+            ./your-app-files/* \
+            ${{ env.VM_USERNAME }}@${{ env.VM_IP }}:/home/${{ env.VM_USERNAME }}/
+          ssh -o StrictHostKeyChecking=no \
+            ${{ env.VM_USERNAME }}@${{ env.VM_IP }} \
+            "docker-compose up -d"
