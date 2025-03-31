@@ -62,16 +62,16 @@ resource "azurerm_network_interface" "my_nic" {
 }
 
 resource "azurerm_linux_virtual_machine" "my_vm" {
-  name                = "my-vm"
-  location            = azurerm_resource_group.my_rg.location
+  name                  = "my-vm"
+  location              = azurerm_resource_group.my_rg.location
   resource_group_name = azurerm_resource_group.my_rg.name
-  size                = "Standard_B1s"
-  admin_username      = "azureuser"
+  size                  = "Standard_B1s"
+  admin_username        = "azureuser"
   network_interface_ids = [azurerm_network_interface.my_nic.id]
 
   admin_ssh_key {
     username   = "azureuser"
-    public_key = file("~/.ssh/id_rsa.pub")
+    public_key = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQCjk0vrPUQ+v0kBbp2455HiSH2Hq6/3oLlInYBpYzfogu7Owncck333o8b28XIp4kM0KWHd1/y8E7jp0M7pukCSYAnq6/xeKN/qmKvSoAidq11jaZVZbrB2w/qUM+MbCL6lT+j6VK+nc0uGtp+5xuZPNlzZggmnfcrzG53BfrgcubsFMxB4q8ARWPDaTXZ0w0V2NWaw9GTkhzxi7nF1CQN343gl33n+uZwfD0qRds1A6XJSFfvIFWJqKyPd0oxBOl0KUGt8D9AvK5BddmNTQEqCt6zYymyxSh+C6WZkNCNhuEs9iRERp51WYRL5XyPR127wdJPRWG6VACZsCLs3MYpp/a1wFzEhb/cwcl1cPDQF4UqtLPH+TE//6rUR/bnE4uXu39cPTHmCF7sXnVSNv/rOMupp4m/j6i0V0o8qlCKSDbJUVwsxSHgDmA+LEHsxG8qulU+BO09fHjOOmaCCMILglzy0tFM31ZsTqLrubho6yl6kDrXQwZ7tSW1ntTfdKkVC4X6dpBjegiy5q3oI092DafukF5Q2davkctk2Tq/wgiAvbFHk+7MSd+6JUczBU0e/3p6AUC3xW0hcomBIPqLs+URaKnE3XQOf0L+wxta+nqWF9PPljig0wfReMBpJyrhs5Dj8GHnHyV2BvF4gZN9WvnPutxKdZFSz9y5rlJlIYQ== umesh@DESKTOP-MSD6398"
   }
 
   os_disk {
@@ -90,5 +90,5 @@ resource "azurerm_linux_virtual_machine" "my_vm" {
 }
 
 output "public_ip" {
-  value = azurerm_public_ip.my_public_ip.ip_address
+  value = azurerm_public_ip.ip_address
 }
