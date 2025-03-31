@@ -1,0 +1,74 @@
+name: Deploy VM and Run Docker App
+
+on:
+  push:
+    branches:
+      - master # Trigger the workflow on pushes to the master branch
+  workflow_dispatch: # Allows manual triggering of the workflow from the GitHub UI
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Terraform
+        uses: hashicorp/terraform-github-actions@v2
+        with:
+          terraform_command: init
+          terraform_version: ">= 1.0" # Specify your desired Terraform version
+          # Configure Azure credentials using environment variables
+          credentials: |
+            {
+              "clientId": "${{ env.AZURE_CLIENT_ID }}",
+              "clientSecret": "${{ env.AZURE_CLIENT_SECRET }}",
+              "subscriptionId": "${{ env.AZURE_SUBSCRIPTION_ID }}",
+              "tenantId": "${{ env.AZURE_TENANT_ID }}"
+            }
+
+      - name: Format Terraform code
+        run: terraform fmt -check
+
+      - name: Plan Terraform
+        id: terraform_plan
+        run: terraform plan -no-color
+        continue-on-error: true # Allow the workflow to continue even if there are changes
+
+      - name: Apply Terraform
+        if: steps.terraform_plan.outcome == 'success'
+        run: terraform apply -auto-approve
+
+      - name: Get VM Public IP Address
+        id: get_ip
+        run: |
+          VM_IP=$(terraform output -raw public_ip)
+          echo "VM_IP=$VM_IP" >> $GITHUB_ENV
+        continue-on-error: true # Keep going even if getting IP fails (might not be ready immediately)
+
+      - name: Wait for SSH to be ready
+        if: steps.get_ip.outcome == 'success'
+        uses: fjogeleit/wait-for-remote-host@v1
+        with:
+          host: ${{ env.VM_IP }}
+          port: 22
+          timeout: 300 # Wait for 5 minutes
+
+      - name: Setup SSH Agent
+        if: steps.get_ip.outcome == 'success' && steps.wait-for-remote-host.outcome == 'success'
+        uses: webfactory/ssh-agent@v0.5.4
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Install Docker and Deploy App
+        if: steps.get_ip.outcome == 'success' && steps.wait-for-remote-host.outcome == 'success' && steps.ssh-agent.outcome == 'success'
+        run: |
+          echo "Connecting to VM at IP: $VM_IP"
+          ssh -o StrictHostKeyChecking=no azureuser@"$VM_IP" "bash install-docker.sh"
+          ssh -o StrictHostKeyChecking=no azureuser@"$VM_IP" "bash deployapp.sh"
