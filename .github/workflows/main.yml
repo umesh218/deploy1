@@ -14,6 +14,7 @@ jobs:
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
       AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      VM_USERNAME: "azureuser" # Or your VM username
 
     steps:
       - name: Checkout code
@@ -23,7 +24,7 @@ jobs:
         uses: hashicorp/terraform-github-actions@v2
         with:
           terraform_command: init
-          terraform_version: ">= 1.0" # Specify your desired Terraform version
+          terraform_version: ">= 1.0"
           # Configure Azure credentials using environment variables
           credentials: |
             {
@@ -39,7 +40,7 @@ jobs:
       - name: Plan Terraform
         id: terraform_plan
         run: terraform plan -no-color
-        continue-on-error: true # Allow the workflow to continue even if there are changes
+        continue-on-error: true
 
       - name: Apply Terraform
         if: steps.terraform_plan.outcome == 'success'
@@ -50,7 +51,7 @@ jobs:
         run: |
           VM_IP=$(terraform output -raw public_ip)
           echo "VM_IP=$VM_IP" >> $GITHUB_ENV
-        continue-on-error: true # Keep going even if getting IP fails (might not be ready immediately)
+        continue-on-error: true
 
       - name: Wait for SSH to be ready
         if: steps.get_ip.outcome == 'success'
@@ -58,7 +59,7 @@ jobs:
         with:
           host: ${{ env.VM_IP }}
           port: 22
-          timeout: 300 # Wait for 5 minutes
+          timeout: 300
 
       - name: Setup SSH Agent
         if: steps.get_ip.outcome == 'success' && steps.wait-for-remote-host.outcome == 'success'
@@ -66,9 +67,15 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      - name: Install Docker and Deploy App
+      - name: Install Docker
         if: steps.get_ip.outcome == 'success' && steps.wait-for-remote-host.outcome == 'success' && steps.ssh-agent.outcome == 'success'
         run: |
           echo "Connecting to VM at IP: $VM_IP"
-          ssh -o StrictHostKeyChecking=no azureuser@"$VM_IP" "bash install-docker.sh"
-          ssh -o StrictHostKeyChecking=no azureuser@"$VM_IP" "bash deployapp.sh"
+          ssh -o StrictHostKeyChecking=no ${{ env.VM_USERNAME }}@"$VM_IP" "bash install-docker.sh"
+        continue-on-error: true
+
+      - name: Deploy App
+        if: steps.get_ip.outcome == 'success' && steps.wait-for-remote-host.outcome == 'success' && steps.ssh-agent.outcome == 'success' && steps.install-docker.outcome == 'success'
+        run: |
+          echo "Connecting to VM at IP: $VM_IP"
+          ssh -o StrictHostKeyChecking=no ${{ env.VM_USERNAME }}@"$VM_IP" "bash deployapp.sh"
