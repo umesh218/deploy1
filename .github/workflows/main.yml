@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       VM_USERNAME: "azureuser" # Or your VM username
@@ -33,8 +33,6 @@ jobs:
               "subscriptionId": "${{ env.AZURE_SUBSCRIPTION_ID }}",
               "tenantId": "${{ env.AZURE_TENANT_ID }}"
             }
-        # Add retries in case of transient errors
-        retries: 3
 
       - name: Format Terraform code
         run: terraform fmt -check
@@ -62,8 +60,6 @@ jobs:
           host: ${{ env.VM_IP }}
           port: 22
           timeout: 300
-        # Add retries in case of transient errors
-        retries: 3
 
       - name: Install Docker
         if: steps.get_ip.outcome == 'success' && steps.wait-for-remote-host.outcome == 'success'
